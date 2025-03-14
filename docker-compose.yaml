@@ -1,0 +1,69 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: conversorgo-app
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./uploads:/uploads
+      - .:/app
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=conversorgo
+      - DB_SSL_MODE=disable
+      - AWS_REGION=us-east-1
+      - S3_BUCKET=conversorgo-videos
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - S3_ENDPOINT=http://localstack:4566
+    depends_on:
+      - postgres
+      - localstack
+    networks:
+      - conversorgo-network
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+
+  postgres:
+    image: postgres:14-alpine
+    container_name: conversorgo-postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./internal/infra/database/migrations:/migrations
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=conversorgo
+    networks:
+      - conversorgo-network
+    restart: unless-stopped
+
+  localstack:
+    image: localstack/localstack:1.4
+    container_name: conversorgo-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3
+      - DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    networks:
+      - conversorgo-network
+    restart: unless-stopped
+
+networks:
+  conversorgo-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+    driver: local 
