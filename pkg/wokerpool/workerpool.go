@@ -7,31 +7,38 @@ import (
 	"sync"
 )
 
+// Job representa um trabalho genérico a ser processado.
 type Job interface{}
 
+// Result representa o resultado do processamento de um trabalho.
 type Result interface{}
 
+// ProcessFunc define a função que processará os trabalhos recebidos.
 type ProcessFunc func(ctx context.Context, job Job) Result
 
+// WorkerPool define a interface para um pool de workers.
 type WorkerPool interface {
 	Start(ctx context.Context, inputCh <-chan Job) (<-chan Result, error)
 	Stop() error
 	IsRunning() bool
 }
 
+// State representa o estado atual do worker pool.
 type State int
 
 const (
-	StartIdle State = iota
-	StateRunning
-	StateStopped
+	StartIdle    State = iota // Estado inicial, ocioso.
+	StateRunning              // Estado em execução.
+	StateStopped              // Estado parado.
 )
 
+// Config contém a configuração do worker pool.
 type Config struct {
-	WorkerCount int
-	Logger      *slog.Logger
+	WorkerCount int          // Número de workers.
+	Logger      *slog.Logger // Logger para registrar eventos.
 }
 
+// DefaultConfig retorna a configuração padrão do worker pool.
 func DefaultConfig() Config {
 	return Config{
 		WorkerCount: 1,
@@ -39,6 +46,7 @@ func DefaultConfig() Config {
 	}
 }
 
+// workerPool implementa a interface WorkerPool.
 type workerPool struct {
 	WorkerCount int
 	ProcessFunc ProcessFunc
@@ -49,6 +57,7 @@ type workerPool struct {
 	stopWg      sync.WaitGroup
 }
 
+// New cria um novo worker pool com a função de processamento e configuração fornecidas.
 func New(ProcessFunc ProcessFunc, config Config) *workerPool {
 	if config.WorkerCount <= 0 {
 		config.WorkerCount = 1
@@ -65,6 +74,7 @@ func New(ProcessFunc ProcessFunc, config Config) *workerPool {
 	}
 }
 
+// Start inicia o pool de workers e retorna um canal de resultados.
 func (wp *workerPool) Start(ctx context.Context, inputCh <-chan Job) (<-chan Result, error) {
 	wp.stateMutex.Lock()
 	defer wp.stateMutex.Unlock()
@@ -79,10 +89,12 @@ func (wp *workerPool) Start(ctx context.Context, inputCh <-chan Job) (<-chan Res
 
 	wp.stopWg.Add(wp.WorkerCount)
 
+	// Cria os workers e os inicia em goroutines separadas.
 	for i := 0; i < wp.WorkerCount; i++ {
 		go wp.worker(ctx, i, inputCh, resultCh)
 	}
 
+	// Goroutine para aguardar a finalização dos workers e fechar o canal de resultados.
 	go func() {
 		wp.stopWg.Wait()
 		close(resultCh)
@@ -93,9 +105,9 @@ func (wp *workerPool) Start(ctx context.Context, inputCh <-chan Job) (<-chan Res
 	}()
 
 	return resultCh, nil
-
 }
 
+// Stop finaliza o pool de workers de forma controlada.
 func (wp *workerPool) Stop() error {
 	wp.stateMutex.Lock()
 	defer wp.stateMutex.Unlock()
@@ -113,12 +125,14 @@ func (wp *workerPool) Stop() error {
 	return nil
 }
 
+// IsRunning verifica se o worker pool está em execução.
 func (wp *workerPool) IsRunning() bool {
 	wp.stateMutex.Lock()
 	defer wp.stateMutex.Unlock()
 	return wp.state == StateRunning
 }
 
+// worker representa um trabalhador individual que processa trabalhos do canal de entrada.
 func (wp *workerPool) worker(ctx context.Context, id int, inputCh <-chan Job, resultCh chan<- Result) {
 	wp.logger.Info("worker started", "worker_id", id)
 
@@ -136,6 +150,7 @@ func (wp *workerPool) worker(ctx context.Context, id int, inputCh <-chan Job, re
 				return
 			}
 
+			// Processa o trabalho recebido.
 			result := wp.ProcessFunc(ctx, job)
 			select {
 			case resultCh <- result:
